@@ -2,6 +2,18 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "https://how-to-demo-backend.onrender.com/api/$1"
+    },
+    {
+      "source": "/sample_data/(.*)",
+      "destination": "https://how-to-demo-backend.onrender.com/sample_data/$1"
+    },
+    {
+      "source": "/static/(.*)",
+      "destination": "https://how-to-demo-backend.onrender.com/static/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
