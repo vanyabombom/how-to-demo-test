@@ -84,7 +84,7 @@ def format_seconds_to_mmss(sec: float) -> str:
 def extract_and_parse_json(content: str) -> Dict[str, Any]:
     """
     Robustly parses JSON from LLM responses, handling markdown blocks,
-    fences, prefix/suffix commentary, and trailing characters.
+    fences, prefix/suffix commentary, single quotes, None/null, and trailing characters.
     """
     cleaned = content.strip()
     
@@ -97,12 +97,24 @@ def extract_and_parse_json(content: str) -> Dict[str, Any]:
     # 2. Extract content from ```json ... ``` or ``` ... ```
     fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
     if fence_match:
+        extracted = fence_match.group(1).strip()
         try:
-            return json.loads(fence_match.group(1).strip())
+            return json.loads(extracted)
         except Exception:
-            pass
+            cleaned = extracted
 
-    # 3. Search for outermost balanced { ... }
+    # 3. Try json_repair (fixes unquoted keys/values, None/null, trailing commas, single quotes)
+    try:
+        import json_repair
+        repaired = json_repair.loads(cleaned)
+        if isinstance(repaired, dict):
+            return repaired
+        if isinstance(repaired, list) and len(repaired) > 0 and isinstance(repaired[0], dict):
+            return repaired[0]
+    except Exception:
+        pass
+
+    # 4. Search for outermost balanced { ... }
     first_brace = cleaned.find('{')
     if first_brace != -1:
         last_brace = cleaned.rfind('}')
@@ -111,13 +123,23 @@ def extract_and_parse_json(content: str) -> Dict[str, Any]:
             try:
                 return json.loads(candidate)
             except Exception:
-                # Walk backward to find the preceding closing brace
+                try:
+                    import json_repair
+                    rep = json_repair.loads(candidate)
+                    if isinstance(rep, dict):
+                        return rep
+                except Exception:
+                    pass
                 last_brace = cleaned.rfind('}', first_brace, last_brace)
 
-    # 4. Fallback regex
+    # 5. Fallback regex
     json_match = re.search(r"(\{[\s\S]*\})", cleaned)
     if json_match:
-        return json.loads(json_match.group(1))
+        try:
+            import json_repair
+            return json_repair.loads(json_match.group(1))
+        except Exception:
+            return json.loads(json_match.group(1))
 
     raise ValueError(f"Failed to parse valid JSON from AI model response: {content[:300]}")
 
@@ -197,7 +219,7 @@ async def analyze_video(
             "temperature": 0.1,
             "max_tokens": 3000
         }
-        if "gemini" in model.lower() or "gpt" in model.lower():
+        if "gemini" in model.lower() or "gpt" in model.lower() or "free" in model.lower():
             kwargs["response_format"] = {"type": "json_object"}
         if "openrouter" in url.lower():
             kwargs["extra_body"] = {"reasoning": {"effort": "none", "exclude": True}}
